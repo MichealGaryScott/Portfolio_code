@@ -1,0 +1,74 @@
+#Installing packages and corresponding libraries to read and write excel sheets
+
+install.packages("readxl")
+install.packages("tidyverse")
+install.packages("writexl")
+install.packages("lubridate")
+library("lubridate")
+library("tidyverse")
+library("readxl")
+library("writexl")
+ 
+#Reading,checking the data sources and cleaning them
+
+solution_updates <- read_excel("solutions_updates.xlsx")
+solutions_data <- read_excel("solutions_raw_data.xlsx")
+pm_data <- read_excel("pm_raw_data.xlsx")
+pm_updates <-read_excel("pm_updates.xlsx")
+col_names_pm <- data.frame(colnames(pm_data))
+col_names_solutions <- data.frame(colnames(solutions_data))
+names(solutions_data)[4] <- "portfolio_visibility"
+names(pm_data)[26] <- "portfolio_visibility"
+
+solutions_data <- solutions_data[,-c(9,13,19,38,37)]
+
+#Filtering by phase and status changes
+solutions_data <- solutions_data %>% filter((portfolio_visibility == "Yes") & (Status != "Done" | Status != "Cancelled"))
+solution_updates <- solution_updates %>% filter(Name == "Status"| Name == "Phase" | Name == "RAG")
+
+pm_data <- pm_data %>% filter((portfolio_visibility == "Yes") & (Status != "Done" | Status != "Cancelled"))
+pm_updates <- pm_updates %>% filter(Name == "Status"| Name == "Phase" | Name == "RAG")
+
+#Formatting Data
+col_names_pm <- data.frame(colnames(pm_data))
+col_names_solutions <- data.frame(colnames(solutions_data))
+
+names(pm_updates)[3] <- "Name"
+names(solution_updates)[3] <- "Name"
+
+names(pm_updates)[4] <- "Change"
+names(solution_updates)[4] <- "Change"
+
+names(solutions_data)[9] <-"internal_pm_or_eq"
+names(pm_data)[9] <-"internal_pm_or_eq"
+
+Merging data
+merged_data <- plyr::rbind.fill(pm_data,solutions_data)
+merged_updates <-plyr::rbind.fill(pm_updates,solution_updates)
+
+#performing left joins of three tables to track updates and the latest comments 
+df<- merged_data %>% left_join(merged_updates,by="Name")
+#write_xlsx(df, "Changes.tracking.xlsx")
+col_names_merged <- data.frame(colnames(df))
+names(df)[55] <- "Last_act_date_time_stamp"
+#df <- df %>%select(Name,Change,From,To,Last_act_date_time_stamp)
+
+#to fetch the final udpate when the status or phase was changed.
+df <- df%>%group_by(Name,Change)%>%slice(which.max(as.POSIXct(Last_act_date_time_stamp)))
+
+write_xlsx(df, "Changes.tracking.xlsx")
+
+##appending the data into google sheets
+#sheet_write(df_updated_comments)
+#sheet_append("", df)
+#writing the cleaned file so that it can be tracked through Google data studio
+#write_xlsx(df_updated_comments, "change_tracking.xlsx")
+
+#Extra snippets
+#df_updated_comments$Last_act_date_time_stamp <-  ymd_hms(df_updated_comments$Last_act_date_time_stamp) 
+#df_updated_comments$date_stamp <- as.Date(df_updated_comments$Last_act_date_time_stamp)
+#df_updated_comments$time_stamp <-format(as.POSIXct(df_updated_comments$Last_act_date_time_stamp),format = "%H:%M:%S")
+#df_updated_comments
+
+#finding the last updated value using R and treatment of date and time 
+# exta snippet if needed %>%group_by(Last_act_datestamp) but returns errors
